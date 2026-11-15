@@ -33,7 +33,7 @@ def clean_latex(s: str) -> str:
     for _ in range(3):
         s = re.sub(r"\\(?:text|mathrm|mathbf)\{([^{}]*)\}", r"\1", s)
         s = re.sub(r"\\(?:overset|underset|stackrel)\{[^{}]*\}\{([^{}]*)\}", r"\1", s)
-        s = re.sub(r"\\frac\{([^{}]*)\}" + r"\{([^{}]*)\}", r"(\1)/(\2)", s)
+        s = re.sub(r"\\frac(\{[^{}]*\})(\{[^{}]*\})", r"\1/\2", s)
     s = s.replace("\\prime", "′").replace("\\cdot", "·").replace("\\times", "×")
     s = s.replace("\\left", "").replace("\\right", "").replace("\\ ", " ").replace("\\\\", "")
     s = re.sub(r"\\[a-zA-Z]+", "", s)
@@ -50,7 +50,7 @@ def fmt_text(s: str) -> str:
     # 复杂 LaTeX（含反斜杠）在 OCR 下只会变乱码，整段丢弃；简单 $F$ 保留内文
     s = re.sub(r"\$[^$]*\\[^$]*\$", " ", s)
     s = re.sub(r"\$([^$]*)\$", r"\1", s)
-    s = (s.replace("&#39;", "'").replace("&amp;", "&")
+    s = (s.replace("&#39;", "'").replace("&amp;", "&",)
           .replace("&lt;", "<").replace("&gt;", ">").replace("\u00ad", ""))
     s = re.sub(r"\s{2,}", " ", s).strip()
     if len(re.sub(r"[^\w\u4e00-\u9fff]", "", s)) <= 1:
