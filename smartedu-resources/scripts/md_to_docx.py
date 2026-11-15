@@ -50,7 +50,7 @@ def fmt_text(s: str) -> str:
     # 复杂 LaTeX（含反斜杠）在 OCR 下只会变乱码，整段丢弃；简单 $F$ 保留内文
     s = re.sub(r"\$[^$]*\\[^$]*\$", " ", s)
     s = re.sub(r"\$([^$]*)\$", r"\1", s)
-    s = (s.replace("&#39;", "'").replace("&amp;", "&",)
+    s = (s.replace("&#39;", "'" ).replace("&amp;", "&")
           .replace("&lt;", "<").replace("&gt;", ">").replace("\u00ad", ""))
     s = re.sub(r"\s{2,}", " ", s).strip()
     if len(re.sub(r"[^\w\u4e00-\u9fff]", "", s)) <= 1:
@@ -278,6 +278,47 @@ def add_table(doc: Document, rows):
 # ---------------------------------------------------------------- 主渲染
 BLOCK_TABLE = re.compile(r"<table[^>]*>.*?</table>", re.I | re.S)
 BLOCK_IMG = re.compile(r"!\[[^\]]*\]\((https?://[^)\s]+)\)")
+MD_SEP = re.compile(r"^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
+
+
+def split_md_row(line: str):
+    line = line.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|"):
+        line = line[:-1]
+    return [c.strip() for c in re.split(r"(?<!\\)\|", line)]
+
+
+def md_cell_html(text: str) -> str:
+    # 单元格里的 markdown 图片转成 <img>，交给 cell_segments 按原位切段
+    return re.sub(r"!\[[^\]]*\]\((https?://[^)\s]+)\)", r'<img src="\1">', text)
+
+
+def convert_md_tables(md: str) -> str:
+    """把 markdown 管道表格（| a | b | 配合 |---|---| 分隔行）转成 <table> HTML，
+    这样后面的表格渲染只需处理一种输入；HTML 表格与正文里的竖线不受影响。"""
+    lines = md.split("\n")
+    out, i = [], 0
+    while i < len(lines):
+        cur = lines[i]
+        nxt = lines[i + 1] if i + 1 < len(lines) else ""
+        if "|" in cur and MD_SEP.match(nxt.strip()):
+            rows = [split_md_row(cur)]
+            j = i + 2
+            while j < len(lines) and lines[j].strip().startswith("|"):
+                rows.append(split_md_row(lines[j]))
+                j += 1
+            parts = ["<table>"]
+            for r in rows:
+                parts.append("<tr>" + "".join(f"<td>{md_cell_html(c)}</td>" for c in r) + "</tr>")
+            parts.append("</table>")
+            out.append("\n".join(parts))
+            i = j
+        else:
+            out.append(cur)
+            i += 1
+    return "\n".join(out)
 
 
 def render(md: str, out_path: str):
@@ -285,6 +326,7 @@ def render(md: str, out_path: str):
     setup_doc(doc)
     # xParse 有时会把整页内容包在 HTML 注释里，注释符要去掉，内容必须保留
     md = re.sub(r"<!--", "", md).replace("-->", "")
+    md = convert_md_tables(md)
     pos = 0
     for m in re.finditer(f"{BLOCK_TABLE.pattern}|{BLOCK_IMG.pattern}", md, re.I | re.S):
         head = md[pos:m.start()]
