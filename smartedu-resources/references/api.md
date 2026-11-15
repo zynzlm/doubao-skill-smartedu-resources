@@ -46,10 +46,39 @@ https://cdncs.ykt.cbern.com.cn/v0.1/static/edu_product/esp/assets/{resource_id}.
 https://basic.smartedu.cn/tchMaterial/detail?contentType=assets_document&contentId={id}&catalogType=tchMaterial&subCatalog=tchMaterial
 ```
 
+## 课时资源接口（备课版块）
+
+基址同为 `https://s-file-1.ykt.cbern.com.cn/zxx`，均公开：
+
+| 用途 | 接口 |
+|---|---|
+| 单份资源详情 | `/ndrv2/prepare_sub_type/resources/details/{resourceId}.json` |
+| 课程包（整套课时） | `/ndrv2/resources/{packageId}.json`，资源在 `relations.course_resource` |
+
+单份详情的 `custom_properties.preview` 是 `{Slide1: url, ...}` 的字典，url 指向公开主机 `r1/r2/r3-ndr.ykt.cbern.com.cn` 上的 jpg；按 Slide 序号排序即页序。这些图就是课件的完整内容，`fetch_resource.py` 据此合成 PDF。
+
+课程包里每项资源带 `resource_type_code`：
+
+- `coursewares` 课件、`lesson_plandesign` 教学设计、`learning_task` 学习任务单、`after_class_exercise` 作业练习 —— 都有 preview 图，可合成 PDF。
+- `micro_lesson_video` 微课视频 —— 只有 `m3u8`/`href` 项，无法下载。
+
+`ti_items[].ti_storages` 指向 `r*-ndr-private` 的 `transcode/pdf.pdf`、`transcode/image`、`transcode/videos/*.m3u8`。其中 `pdf.pdf` 直连 403、m3u8 401，`image/*.jpg` 可在公开 `r*-ndr` 上取到。所以不要指望拿转码 PDF 原文件，用页面图合成。
+
+## 下载相关的其他端点
+
+- `https://cdncs.ykt.cbern.com.cn/v0.1/download?dentryId=<id>&size=80`：站点静态图标下载，实测返回 PNG，不是资源文件下载器。
+- `https://cdncs.ykt.cbern.com.cn/v0.1/static/x_edu/config/download-whitelist.json`：可下载资源白名单 ID 列表，只有列在里面的教材在页面上出现下载入口。
+
+## 页面结构（备课详情）
+
+`https://basic.smartedu.cn/syncClassroom/prepare/detail?resourceId=<id>&chapterId=...&teachingmaterialId=...&fromPrepare=1`
+
+教材选择页：`https://basic.smartedu.cn/syncClassroom/prepare`，标签有 `课程包` / `知识点微课` / `课件` / `教学设计`。点开资源会在新标签页打开详情，`resourceId` 即所需 ID。
+
 ## 已知不可用
 
 - `/ndrs/online_judge/teachingmaterials/version/data_version.json` 与 `/ndrs/tags/online_judge_tag.json`：403，端点不存在。
-- `/ndrv2/resources/tch_material/details/{id}`、`/ndrs/resources/tch_material/details/{id}`、`/basic.smartedu.cn/api/tchMaterial/details/{id}`：403，需登录态。课时级资源只能走浏览器。
+- `/ndrv2/resources/tch_material/details/{id}`、`/ndrs/resources/tch_material/details/{id}`、`/basic.smartedu.cn/api/tchMaterial/details/{id}`：403。教材正文阅读器需登录；课时资源改用 `prepare_sub_type` 的公开 JSON 即可。
 - `api.ykt.cbern.com.cn/zxx/api_static/...`：403。
 
 ## 站内搜索
