@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把 xParse 解析出的 markdown 批量渲染成可编辑 Word。
+r"""把 xParse 解析出的 markdown 批量渲染成可编辑 Word。
 
 输入约定（默认值可被命令行覆盖）：
   <work>/md/cXX.md        每份文档的 markdown（cXX 为自定义编号）
@@ -11,10 +11,10 @@
 用法：
   python build_docs.py                                   # 用 TEMP/smartedu_probe 与当前目录
   python build_docs.py --work D:\job --out "D:\输出"
-  python build_docs.py --work D:\job --out D:\out --report D:\job\report.json
+  python build_docs.py --work D:\job --out E:\out --report D:\job\report.json
 
 也可以用 --md 单份渲染：
-  python build_docs.py --md c05.md --out "D:\输出\第一节 透镜" --name 教学设计-xxx.docx
+  python build_docs.py --md c05.md --out E:\out\第一节 透镜 --name 教学设计-xxx.docx
 """
 import argparse
 import json
