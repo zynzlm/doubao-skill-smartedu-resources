@@ -11,6 +11,7 @@ description: 检索并下载国家中小学智慧教育平台（basic.smartedu.c
 
 | 脚本 | 用途 | 登录 |
 |---|---|---|
+| `scripts/setup.py` | 检查并自动安装全部 Python 依赖（首次必跑） | 不需要 |
 | `scripts/smartedu.py` | 教材目录检索、PDF 下载 | 不需要 |
 | `scripts/fetch_resource.py` | 课时资源（课件/教学设计/任务单/作业）抓取并合成 PDF | 不需要 |
 | `scripts/batch_download.py` | 按教材的某一章/某一节，把该章所有资源包批量落成 PDF | 不需要 |
@@ -20,7 +21,21 @@ description: 检索并下载国家中小学智慧教育平台（basic.smartedu.c
 | `scripts/pdf_to_docx.py` | 【已废弃】纯 OCR 文字版，丢图，仅作对照 | 不需要 |
 | `scripts/embed_page_images.py` | 【已废弃】整页原图嵌入版，已被用户否决 | 不需要 |
 
-Python 3.8+；`fetch_resource.py` 合成 PDF 需要 Pillow（`pip install pillow`）。
+## 〇、首次使用：先让 setup.py 装依赖
+
+任何脚本报 `ModuleNotFoundError`、换了一台机器、或刚装好技能，都先跑这一条，不要手敲 pip：
+
+```bash
+python "<skill>/scripts/setup.py"                          # 检查 + 缺什么装什么（带确认）
+python "<skill>/scripts/setup.py" --check                  # 只看状态，不动环境
+python "<skill>/scripts/setup.py" -y --mirror tsinghua     # 国内源静默装（-y 不询问）
+python "<skill>/scripts/setup.py" -y --self-test           # 装完逐个跑脚本 --help 自检
+```
+
+- 必需依赖：`pillow`（页面图合成 PDF）、`pymupdf`（PDF 页渲染、课件转 PPTX）、`python-pptx`、`python-docx`；`requests` 为可选（`--optional` 才装）。
+- setup.py 自身**不含第三方依赖**，只用标准库检测 import 并调 `python -m pip`；镜像默认官方，失败自动换清华源，也可 `--mirror aliyun/ustc/tencent/pypi`。
+- 退出码 0 = 依赖齐全，1 = 仍有核心依赖缺失（此时不要继续跑下载，先解决环境）。
+- 装完把版本信息写给用户：Python 版本、装了哪几个包、`--self-test` 是否全过。
 
 ```bash
 python "<skill>/scripts/smartedu.py" <子命令> [参数]
@@ -58,7 +73,7 @@ python "<skill>/scripts/smartedu.py" download --module textbook --subject 数学
 
 站点没有"下载"按钮，但每份资料的逐页转码图是公开的。`fetch_resource.py` 把页面图按顺序取回并合成一个 PDF。
 
-**定位资源**（浏览器里做，见第四节的浏览器规则）：
+**定位资源**（浏览器里做，见第三节的浏览器规则）：
 
 1. 打开 `https://basic.smartedu.cn/syncClassroom/prepare`，选教材 → 展开章节。
 2. 切换标签：`课程包`（整套课时资料）、`知识点微课`、`课件`、`教学设计`。
@@ -119,16 +134,14 @@ python "<skill>/scripts/to_pptx.py" --in "<某节目录>" --out "<输出目录>"
    `result_format="markdown"`、`table_view="html"`、`include_table_structure=true`、`resource_mode="free_only"`。
    付费的 `resource_mode="paid"` 能直接导出 docx，但免费额度不含导出；免费 markdown 足够本地重建。
 2. **本地渲染**：`scripts/md_to_docx.py`，批量入口 `scripts/build_docs.py`
-   - HTML 表格 → 真 Word 表格，支持 `colspan`/`rowspan` 合并
+   - HTML 表格 → 真 Word 表格，支持 `colspan`/`rowspan` 合并；markdown 管道表格（`| a | b |` 加 `|---|---|` 分隔行）也会自动转成真表格
    - 单元格内容按 `<br>` 与 `<img>` 的文档顺序切段，文字与插图交替输出；**连续多图放进同一段并排**（选项图 A/B/C/D 不会叠成竖排）
    - 插图按宽高双限缩放（单图 9cm 宽、并行图按张数均分、高度上限 4.6cm）
    - 丢弃 LaTeX 碎片行、纯符号行，以及页眉残留的「基础教育精品课」
 
 ```bash
-python "<skill>/scripts/build_docs.py" --work <含 md/ 与 fileids.json 的目录> --out "<输出目录>"
+python "<skill>/scripts/build_docs.py"   # 读 fileids.json + md/*.md 批量出 docx，末尾打印「完成 N / 总数」
 ```
-
-`fileids.json` 形如 `{"ok": {"c01": {"path": "<源 PDF 绝对路径>"}}}`，配套 `<work>/md/c01.md`。也可以用 `--md c01.md --out <目录> --name xxx.docx` 单份渲染。
 
 3. **必须人工校正的三处**（不校正会被退回）：
    - **表格单元格内的多张插图**：xParse json 里格内图只有 `image_datas` 列表（顺序即阅读顺序）、**没有坐标**，markdown 会把整批图堆到单元格末尾。必须按题号插回每题之后——先渲染源 PDF 页看图（`pymupdf`，115dpi），再改 md 里 `<img>` 的位置。表格**外**的图是独立 `Image` 元素，自带 `coordinates`，解析顺序已正确，不用动。
