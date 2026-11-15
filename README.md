@@ -12,26 +12,44 @@
 | 单份课时资源 | `scripts/fetch_resource.py` | 粘一个详情页链接或 resourceId，逐页取图合成 PDF |
 | 整章 / 整节批量 | `scripts/batch_download.py` | 给定教材 id + 章名，一次拉完整章按节分目录，并写 `清单.md` |
 | 课件 → PPTX | `scripts/to_pptx.py` | 每页原图铺满一页 16:9 幻灯片，视觉与原件一致 |
-| 文档 → 可编辑 Word | `scripts/md_to_docx.py` + `scripts/build_docs.py` | 配合 TextIn xParse 解析结果，重建真表格 + 原位插图的可编辑 docx |
+| 文档 → 可编辑 Word | `scripts/md_to_docx.py` + `scripts/build_docs.py` | 配合版面解析（xParse 一类）结果，重建真表格 + 原位插图的可编辑 docx |
 
 ## 仓库结构
 
 ```
 doubao-skill-smartedu-resources/
 ├── README.md
-└── smartedu-resources/          ← 技能本体（整目录）
-    ├── SKILL.md                 ← 入口与完整流程说明
-    ├── references/api.md        ← 实测过的接口、主机行为、失效端点
-    └── scripts/                 ← 6 个可运行脚本（见上表）
+├── smartedu-resources/          ← 技能本体（整目录）
+│   ├── SKILL.md                 ← 入口与完整流程说明
+│   ├── references/api.md        ← 实测过的接口、主机行为、失效端点
+│   └── scripts/                 ← 6 个可运行脚本（见上表）
+└── workbuddy/                   ← WorkBuddy / CodeBuddy 适配版
+    ├── SKILL.md                 ← 覆盖用（多 allowed-tools、登录章节不依赖特定工具）
+    └── 安装说明.md               ← 3 步安装
 ```
 
-## 安装（3 步）
+## 安装（豆包 / 通用 SKILL.md 宿主）
 
 1. `git clone https://github.com/zynzlm/doubao-skill-smartedu-resources.git`
-2. 把仓库里的 `smartedu-resources/` 整个目录复制到你所使用客户端的**用户技能目录**（user skills，各客户端位置不同，见对应客户端帮助；目录内必须直接是 `SKILL.md`）。若客户端要求目录名与技能名一致，把目录名保持为 `smartedu-resources` 即可。
+2. 把仓库里的 `smartedu-resources/` 整个目录复制到你客户端的**用户技能目录**（user skills，各客户端位置不同，见对应客户端帮助；目录内必须直接是 `SKILL.md`）。若客户端要求目录名与技能名一致，保持目录名为 `smartedu-resources`。
 3. 重启会话或重新加载技能，然后直接说“下人教版八年级上册物理第五章的全部资料”这类需求即可触发。
 
 > 不装到客户端也可以当普通脚本用：直接 `python smartedu-resources/scripts/smartedu.py --help`。
+
+## WorkBuddy / CodeBuddy 安装
+
+WorkBuddy 使用同一套 `SKILL.md` 规范，但需要多一行权限。
+
+```bash
+# 1) 放进技能目录（项目级，或换成 ~/.codebuddy/skills 做全局）
+mkdir -p .codebuddy/skills
+cp -r doubao-skill-smartedu-resources/smartedu-resources .codebuddy/skills/smartedu-resources
+
+# 2) 用适配版覆盖主文件（关键一步）
+cp doubao-skill-smartedu-resources/workbuddy/SKILL.md .codebuddy/skills/smartedu-resources/SKILL.md
+```
+
+然后重开会话或 `/reload-plugins`，用 `/smartedu-resources` 手动触发，也会根据 description 自动匹配。适配版只改两处：frontmatter 多了 `allowed-tools: Read, Write, Bash, Glob`；登录章节去掉豆包专用工具名，改为“打开登录页 → 告诉用户要做什么 → 停下等”。详见 [`workbuddy/安装说明.md`](workbuddy/安装说明.md)。
 
 ## 依赖
 
@@ -48,7 +66,7 @@ pip install requests pillow pymupdf python-pptx python-docx
 | `pymupdf` | 课件 PDF → PPTX、页图预览 |
 | `python-pptx` | 写 PPTX |
 | `python-docx` | 写 docx |
-| `pywin32` | 可选，Windows 上docx→PDF 自查 |
+| `pywin32` | 可选，Windows 上 docx→PDF 自查 |
 
 ## 快速上手
 
@@ -56,7 +74,7 @@ pip install requests pillow pymupdf python-pptx python-docx
 # 1) 看有哪些教材版本
 python scripts/smartedu.py facets --module textbook
 
-# 2) 检索并下载一本教材标注
+# 2) 检索并下载一本教材
 python scripts/smartedu.py download --module textbook --subject 物理 --grade 八年级 --version 人教版 --volume 上册 --out "<目录>"
 
 # 3) 下整章全部资料（章 id 来自备课页 URL 的 teachingmaterialId）
@@ -72,7 +90,7 @@ python scripts/to_pptx.py --in "课件-第1节 透镜.pdf" --out "<输出目录>
 
 平台不提供教学设计/学习任务单/作业练习的原 docx。需要**可编辑文字 + 插图留在原题位置 + 真表格（含合并单元格）**时，走这条链路：
 
-1. 用 TextIn xParse 解析源 PDF（`result_format=markdown`、`table_view=html`、`include_table_structure=true`），得到每份一个 md；
+1. 用支持版面还原的文档解析服务（如 TextIn xParse）解析源 PDF（`result_format=markdown`、`table_view=html`、`include_table_structure=true`），得到每份一个 md；
 2. `python scripts/build_docs.py --work <work> --out <目录>` 批量渲染；`<work>/md/cXX.md` + `<work>/fileids.json`（`{"ok":{"c01":{"path":"<源PDF绝对路径>"}}}`）。
 
 渲染器做的事：HTML 表格转真 Word 表格（支持 `colspan`/`rowspan`）；单元格内文字与 `<img>` 按文档顺序切段交替输出，连续多图同段并排；图片宽高双限缩放；剔除页眉残留与 LaTeX 碎片。
@@ -87,7 +105,7 @@ python scripts/to_pptx.py --in "课件-第1节 透镜.pdf" --out "<输出目录>
 - 平台声明资源免费，但**“任何单位及个人不得用于商业行为”**。本仓库只放代码与说明，**不包含任何下载的资源文件**。
 - 请只按需取用户明确需要的少数几份，不做整库搬运。
 - 视频是 m3u8 在线流，地址带签名，**不支持下载**；需要留存请由用户登录后在线观看或自行录屏。
-- 登录：教材 PDF 与课时页面图都是公开接口。遇到需要登录的场景（视频、“我的资源库”），按 `SKILL.md` 第四节用浏览器打开登录页并交给用户完成登录，不要索取密码。
+- 登录：教材 PDF 与课时页面图都是公开接口。遇到需要登录的场景（视频、“我的资源库”），把登录页交给用户自己完成，不要索取密码。
 
 接口细节与已验证不可用的端点见 [`smartedu-resources/references/api.md`](smartedu-resources/references/api.md)。
 
