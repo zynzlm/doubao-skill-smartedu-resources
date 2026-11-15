@@ -8,6 +8,7 @@
 
 | 能力 | 入口脚本 | 说明 |
 |---|---|---|
+| 依赖自动安装 | `scripts/setup.py` | 检测缺什么包就装什么，可走国内镜像，装完自检 6 个脚本 |
 | 电子教材检索与下载 | `scripts/smartedu.py` | 约 3500 本教材，按学段/学科/版本/年级/册次筛选，下载完整 PDF |
 | 单份课时资源 | `scripts/fetch_resource.py` | 粘一个详情页链接或 resourceId，逐页取图合成 PDF |
 | 整章 / 整节批量 | `scripts/batch_download.py` | 给定教材 id + 章名，一次拉完整章按节分目录，并写 `清单.md` |
@@ -22,7 +23,7 @@ doubao-skill-smartedu-resources/
 ├── smartedu-resources/          ← 技能本体（整目录）
 │   ├── SKILL.md                 ← 入口与完整流程说明
 │   ├── references/api.md        ← 实测过的接口、主机行为、失效端点
-│   └── scripts/                 ← 6 个可运行脚本（见上表）
+│   └── scripts/                 ← 7 个可运行脚本（见上表）
 └── workbuddy/                   ← WorkBuddy / CodeBuddy 适配版
     ├── SKILL.md                 ← 覆盖用（多 allowed-tools、登录章节不依赖特定工具）
     └── 安装说明.md               ← 3 步安装
@@ -33,8 +34,29 @@ doubao-skill-smartedu-resources/
 1. `git clone https://github.com/zynzlm/doubao-skill-smartedu-resources.git`
 2. 把仓库里的 `smartedu-resources/` 整个目录复制到你客户端的**用户技能目录**（user skills，各客户端位置不同，见对应客户端帮助；目录内必须直接是 `SKILL.md`）。若客户端要求目录名与技能名一致，保持目录名为 `smartedu-resources`。
 3. 重启会话或重新加载技能，然后直接说“下人教版八年级上册物理第五章的全部资料”这类需求即可触发。
+4. 第一次使用先跑依赖自检（见下节），不要手敲 pip。
 
 > 不装到客户端也可以当普通脚本用：直接 `python smartedu-resources/scripts/smartedu.py --help`。
+
+## 依赖：一条命令装好
+
+Python 3.8+（推荐 3.10+）。**不要手动 pip install，跑 setup.py**：
+
+```bash
+python smartedu-resources/scripts/setup.py                  # 缺什么装什么（带确认）
+python smartedu-resources/scripts/setup.py --check          # 只看状态，不动环境
+python smartedu-resources/scripts/setup.py -y --mirror tsinghua --self-test   # 国内源静默装 + 自检
+```
+
+| 依赖 | 用途 | 必需 |
+|---|---|---|
+| `pillow` | 页面图合成 PDF | 是 |
+| `pymupdf` | 课件 PDF → PPTX、页图渲染 | 是 |
+| `python-pptx` | 写 PPTX | 是 |
+| `python-docx` | 写 docx | 是 |
+| `requests` | HTTP 客户端（脚本本体用标准库 urllib） | 否，`--optional` 才装 |
+
+setup.py 自身不含第三方依赖，只用标准库判断 import 并调 `python -m pip`；默认走官方源，失败自动换清华源。退出码 0 = 依赖齐全，1 = 仍有核心依赖缺失。
 
 ## WorkBuddy / CodeBuddy 安装
 
@@ -51,26 +73,12 @@ cp doubao-skill-smartedu-resources/workbuddy/SKILL.md .codebuddy/skills/smartedu
 
 然后重开会话或 `/reload-plugins`，用 `/smartedu-resources` 手动触发，也会根据 description 自动匹配。适配版只改两处：frontmatter 多了 `allowed-tools: Read, Write, Bash, Glob`；登录章节去掉豆包专用工具名，改为“打开登录页 → 告诉用户要做什么 → 停下等”。详见 [`workbuddy/安装说明.md`](workbuddy/安装说明.md)。
 
-## 依赖
-
-Python 3.8+（推荐 3.10+）。
-
-```bash
-pip install requests pillow pymupdf python-pptx python-docx
-```
-
-| 依赖 | 用途 |
-|---|---|
-| `requests` | 可选，脚本本体用标准库 `urllib` |
-| `pillow` | 页面图合成 PDF |
-| `pymupdf` | 课件 PDF → PPTX、页图预览 |
-| `python-pptx` | 写 PPTX |
-| `python-docx` | 写 docx |
-| `pywin32` | 可选，Windows 上 docx→PDF 自查 |
-
 ## 快速上手
 
 ```bash
+# 0) 先装依赖
+python scripts/setup.py -y
+
 # 1) 看有哪些教材版本
 python scripts/smartedu.py facets --module textbook
 
@@ -93,7 +101,7 @@ python scripts/to_pptx.py --in "课件-第1节 透镜.pdf" --out "<输出目录>
 1. 用支持版面还原的文档解析服务（如 TextIn xParse）解析源 PDF（`result_format=markdown`、`table_view=html`、`include_table_structure=true`），得到每份一个 md；
 2. `python scripts/build_docs.py --work <work> --out <目录>` 批量渲染；`<work>/md/cXX.md` + `<work>/fileids.json`（`{"ok":{"c01":{"path":"<源PDF绝对路径>"}}}`）。
 
-渲染器做的事：HTML 表格转真 Word 表格（支持 `colspan`/`rowspan`）；单元格内文字与 `<img>` 按文档顺序切段交替输出，连续多图同段并排；图片宽高双限缩放；剔除页眉残留与 LaTeX 碎片。
+渲染器做的事：HTML 表格与 markdown 管道表格都转成真 Word 表格（支持 `colspan`/`rowspan`）；单元格内文字与 `<img>` 按文档顺序切段交替输出，连续多图同段并排；图片宽高双限缩放；剔除页眉残留与 LaTeX 碎片。
 
 **必须人工校正的两处：**
 

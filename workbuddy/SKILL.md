@@ -16,6 +16,7 @@ allowed-tools: Read, Write, Bash, Glob
 
 | 脚本 | 用途 | 登录 |
 |---|---|---|
+| `scripts/setup.py` | 检查并自动安装全部 Python 依赖（首次必跑） | 不需要 |
 | `scripts/smartedu.py` | 教材目录检索、PDF 下载 | 不需要 |
 | `scripts/fetch_resource.py` | 课时资源（课件/教学设计/任务单/作业）抓取并合成 PDF | 不需要 |
 | `scripts/batch_download.py` | 按教材的某一章/某一节，把该章所有资源包批量落成 PDF | 不需要 |
@@ -25,7 +26,21 @@ allowed-tools: Read, Write, Bash, Glob
 | `scripts/pdf_to_docx.py` | 【已废弃】纯 OCR 文字版，丢图，仅作对照 | 不需要 |
 | `scripts/embed_page_images.py` | 【已废弃】整页原图嵌入版，已被验收否决 | 不需要 |
 
-Python 3.8+；`fetch_resource.py` 合成 PDF 需要 Pillow（`pip install pillow`）。
+## 〇、首次使用：先让 setup.py 装依赖
+
+第一次用、换了机器、或任何脚本报 `ModuleNotFoundError`，先跑这一条，不要手敲 pip：
+
+```bash
+python scripts/setup.py                          # 检查 + 缺什么装什么（带确认）
+python scripts/setup.py --check                  # 只看状态，不动环境
+python scripts/setup.py -y --mirror tsinghua     # 国内源静默装（-y 不询问）
+python scripts/setup.py -y --self-test           # 装完逐个跑脚本 --help 自检
+```
+
+- 必需依赖：`pillow`、`pymupdf`、`python-pptx`、`python-docx`；`requests` 为可选（`--optional` 才装）。
+- setup.py 自身**不含第三方依赖**，只用标准库检测 import 并调 `python -m pip`；镜像默认官方，失败自动换清华源，也可 `--mirror aliyun/ustc/tencent/pypi`。
+- 退出码 0 = 依赖齐全，1 = 仍有核心依赖缺失（此时不要继续跑下载，先解决环境）。
+- 装完把版本信息告诉用户：Python 版本、装了哪几个包、`--self-test` 是否全过。
 
 ```bash
 python scripts/smartedu.py <子命令> [参数]
@@ -124,7 +139,7 @@ python scripts/to_pptx.py --in "<某节目录>" --out "<输出目录>"     # 转
 1. **云端解析**：用支持版面还原的文档解析服务（芸互/TextIn xParse 一类；WorkBuddy 里可以接对应 MCP 或 REST）解析源 PDF，参数取
    `result_format=markdown`、`table_view=html`、`include_table_structure=true`，一张 PDF 得到一份 markdown。
 2. **本地渲染**：`scripts/md_to_docx.py`，批量入口 `scripts/build_docs.py`
-   - HTML 表格 → 真 Word 表格，支持 `colspan`/`rowspan` 合并
+   - HTML 表格 → 真 Word 表格，支持 `colspan`/`rowspan` 合并；markdown 管道表格（`| a | b |` 加 `|---|---|` 分隔行）也会自动转成真表格
    - 单元格内容按 `<br>` 与 `<img>` 的文档顺序切段，文字与插图交替输出；**连续多图放进同一段并排**（选项图 A/B/C/D 不会叠成竖排）
    - 插图按宽高双限缩放（单图 9cm 宽、并行图按张数均分、高度上限 4.6cm）
    - 丢弃 LaTeX 碎片行、纯符号行，以及页眉残留的「基础教育精品课」
