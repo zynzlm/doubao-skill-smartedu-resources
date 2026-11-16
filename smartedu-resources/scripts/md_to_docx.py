@@ -3,7 +3,7 @@
 """把 xParse 输出的 markdown（表格为 HTML、图片为 URL/HTML）渲染成可编辑 Word。
 
 特点：题目文字是普通段落；表格转成真正的 Word 表格（保留合并单元格）；
-图片从 URL 下载后原样插入到它原来的位置；公式的 LaTeX 碎片做轻量降噪。
+图片从 URL 或本地路径读入后原样插入到它原来的位置；公式的 LaTeX 碎片做轻量降噪。
 
 用法:
     python md_to_docx.py --md a.md --out a.docx
@@ -65,6 +65,12 @@ def fmt_text(s: str) -> str:
 
 # ---------------------------------------------------------------- 图片下载
 def download(url: str) -> str:
+    # 本地图片（pdf_to_md.py 裁出的插图）直接使用，不走网络
+    url = (url or "").strip().strip("<>")
+    if url.startswith("file://"):
+        url = urllib.request.url2pathname(url[7:])
+    if url and os.path.exists(url) and os.path.getsize(url) > 512:
+        return url
     os.makedirs(IMG_DIR, exist_ok=True)
     name = re.sub(r"[^0-9a-zA-Z_.]", "_", url.split("/")[-1])[:80] or "img.jpg"
     path = os.path.join(IMG_DIR, name)
@@ -277,7 +283,7 @@ def add_table(doc: Document, rows):
 
 # ---------------------------------------------------------------- 主渲染
 BLOCK_TABLE = re.compile(r"<table[^>]*>.*?</table>", re.I | re.S)
-BLOCK_IMG = re.compile(r"!\[[^\]]*\]\((https?://[^)\s]+)\)")
+BLOCK_IMG = re.compile(r"!\[[^\]]*\]\(([^)\n]+)\)")
 MD_SEP = re.compile(r"^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
 
 
@@ -292,7 +298,7 @@ def split_md_row(line: str):
 
 def md_cell_html(text: str) -> str:
     # 单元格里的 markdown 图片转成 <img>，交给 cell_segments 按原位切段
-    return re.sub(r"!\[[^\]]*\]\((https?://[^)\s]+)\)", r'<img src="\1">', text)
+    return re.sub(r"!\[[^\]]*\]\(([^)\n]+)\)", r'<img src="\1">', text)
 
 
 def convert_md_tables(md: str) -> str:

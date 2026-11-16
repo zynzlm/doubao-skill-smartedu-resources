@@ -8,7 +8,8 @@
     python scripts/setup.py --check          # 只看状态，不动环境
     python scripts/setup.py -y               # 缺什么直接装，不询问
     python scripts/setup.py --mirror tsinghua  # 走国内镜像
-    python scripts/setup.py --self-test      # 装完顺手验一遍 6 个脚本能不能跑
+    python scripts/setup.py --local-ocr      # 额外装离线 OCR 依赖
+    python scripts/setup.py --self-test      # 装完顺手验一遍 7 个脚本能不能跑
 
 退出码：0 表示依赖齐全（或已装好）；1 表示仍有核心依赖缺失。
 """
@@ -29,7 +30,14 @@ DEPS = [
     ("fitz", "pymupdf", "课件 PDF→PPTX、页图渲染（to_pptx / md_to_docx）", True),
     ("pptx", "python-pptx", "写 .pptx（to_pptx）", True),
     ("docx", "python-docx", "写 .docx（md_to_docx / build_docs）", True),
-    ("requests", "requests", "可选：HTTP 客户端（脚本本体用标准库 urllib）", False),
+    ("requests", "requests", "HTTP 客户端（pdf_to_md.py 的云端解析接口）", True),
+]
+
+# 只有「离线 OCR 兜底」（pdf_to_md.py --engine local）才需要，非核心
+LOCAL_OCR = [
+    ("rapidocr", "rapidocr", "离线 OCR 文字识别"),
+    ("rapid_layout", "rapid-layout", "离线版面分析（找插图/表格区域）"),
+    ("cv2", "opencv-python-headless", "表格线检测"),
 ]
 
 MIRRORS = {
@@ -43,7 +51,7 @@ MIRRORS = {
 # 依赖检查通过后，顺带确认这几个脚本能被解释器加载（--help 即退出）
 SELF_TEST = [
     "smartedu.py", "fetch_resource.py", "batch_download.py",
-    "to_pptx.py", "md_to_docx.py", "build_docs.py",
+    "to_pptx.py", "md_to_docx.py", "build_docs.py", "pdf_to_md.py",
 ]
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -141,21 +149,26 @@ def main():
     ap.add_argument("--check", action="store_true", help="只检查，不安装")
     ap.add_argument("-y", "--yes", action="store_true", help="缺依赖时直接安装，不再确认")
     ap.add_argument("--mirror", choices=list(MIRRORS), default=None, help="pip 镜像（默认官方，失败自动换清华源）")
-    ap.add_argument("--optional", action="store_true", help="连可选依赖 requests 一起装")
+    ap.add_argument("--optional", action="store_true", help="兼容旧参数（requests 已并入必需）")
+    ap.add_argument("--local-ocr", action="store_true", help="额外检查/安装离线 OCR 依赖（pdf_to_md.py --engine local 需要）")
     ap.add_argument("--self-test", action="store_true", help="装完逐个跑脚本 --help 验证")
     args = ap.parse_args()
 
     python_ok()
     missing_core, missing_opt = report()
+    local_missing = [pkg for mod, pkg, _ in LOCAL_OCR if not installed(mod)]
 
     todo = list(missing_core)
     if args.optional:
         todo += missing_opt
+    if args.local_ocr:
+        todo += local_missing
 
     if args.check:
         print(f"\n检查完毕：缺核心依赖 {len(missing_core)} 个"
               + (f"（{'、'.join(missing_core)}）" if missing_core else "")
-              + f"，缺可选依赖 {len(missing_opt)} 个")
+              + f"，缺可选依赖 {len(missing_opt)} 个"
+              + f"，缺离线 OCR 依赖 {len(local_missing)} 个（--local-ocr 才需要）")
         if args.self_test:
             self_test()
         return 0 if not missing_core else 1
@@ -181,6 +194,10 @@ def main():
             print(f"\n[未解决] 仍有核心依赖缺失：{'、'.join(still_core)}")
             print("可尝试：换 --mirror tsinghua / 关掉代理 / 升级 pip：python -m pip install -U pip")
             return 1
+        if args.local_ocr:
+            left = [pkg for mod, pkg, _ in LOCAL_OCR if not installed(mod)]
+            if left:
+                print(f"\n[提示] 离线 OCR 依赖仍缺：{'、'.join(left)}（只影响 --engine local，云端解析不受影响）")
 
     if args.self_test:
         bad = self_test()
