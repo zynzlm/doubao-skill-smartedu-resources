@@ -16,7 +16,8 @@ description: 检索并下载国家中小学智慧教育平台（basic.smartedu.c
 | `scripts/fetch_resource.py` | 课时资源（课件/教学设计/任务单/作业）抓取并合成 PDF | 不需要 |
 | `scripts/batch_download.py` | 按教材的某一章/某一节，把该章所有资源包批量落成 PDF | 不需要 |
 | `scripts/to_pptx.py` | 把课件 PDF 转成 PPTX（每页铺满原图，可直接放映） | 不需要 |
-| `scripts/md_to_docx.py` | 把 xParse 解析出的 markdown 渲染成可编辑 Word（真表格 + 原位插图） | 不需要 |
+| `scripts/pdf_to_md.py` | 把 PDF 解析成 markdown（文字 + 原位插图 + 表格）：云端 xParse 接口 / 本地 OCR 两档 | 不需要 |
+| `scripts/md_to_docx.py` | 把解析出的 markdown 渲染成可编辑 Word（真表格 + 原位插图） | 不需要 |
 | `scripts/build_docs.py` | 批量渲染整章/整节的 docx | 不需要 |
 | `scripts/pdf_to_docx.py` | 【已废弃】纯 OCR 文字版，丢图，仅作对照 | 不需要 |
 | `scripts/embed_page_images.py` | 【已废弃】整页原图嵌入版，已被用户否决 | 不需要 |
@@ -30,9 +31,11 @@ python "<skill>/scripts/setup.py"                          # 检查 + 缺什么�
 python "<skill>/scripts/setup.py" --check                  # 只看状态，不动环境
 python "<skill>/scripts/setup.py" -y --mirror tsinghua     # 国内源静默装（-y 不询问）
 python "<skill>/scripts/setup.py" -y --self-test           # 装完逐个跑脚本 --help 自检
+python "<skill>/scripts/setup.py" -y --local-ocr           # 额外装本地 OCR 依赖（走离线兜底才需要）
 ```
 
-- 必需依赖：`pillow`（页面图合成 PDF）、`pymupdf`（PDF 页渲染、课件转 PPTX）、`python-pptx`、`python-docx`；`requests` 为可选（`--optional` 才装）。
+- 必需依赖：`pillow`（页面图合成 PDF）、`pymupdf`（PDF 页渲染、课件转 PPTX）、`python-pptx`、`python-docx`、`requests`（云端解析接口）。
+- 可选依赖组 `--local-ocr`：`rapidocr`、`rapid-layout`、`opencv-python-headless`、`numpy`，只有 `pdf_to_md.py --engine local` 离线解析才需要。
 - setup.py 自身**不含第三方依赖**，只用标准库检测 import 并调 `python -m pip`；镜像默认官方，失败自动换清华源，也可 `--mirror aliyun/ustc/tencent/pypi`。
 - 退出码 0 = 依赖齐全，1 = 仍有核心依赖缺失（此时不要继续跑下载，先解决环境）。
 - 装完把版本信息写给用户：Python 版本、装了哪几个包、`--self-test` 是否全过。
@@ -128,30 +131,47 @@ python "<skill>/scripts/to_pptx.py" --in "<某节目录>" --out "<输出目录>"
 
 ### 文档转成可编辑 Word（验收口径：题目文字可编辑 + 插图留在原题位置 + 表格是真表格）
 
-教学设计、学习任务单、作业练习的原文件（docx）平台不提供，只有逐页图片。**不要用整页扫描图冒充可编辑文档**，也不要交纯文字稿（丢图同样不合格）。可靠路径是「云端版面解析 + 本地渲染」：
+教学设计、学习任务单、作业练习的原文件（docx）平台不提供，只有逐页图片。**不要用整页扫描图冒充可编辑文档**，也不要交纯文字稿（丢图同样不合格）。
 
-1. **云端解析**：用 TextIn xParse 插件（`prepare_file_upload` 上传 PDF → `submit_parse_task` → 逐份 `parse_document`），参数取
-   `result_format="markdown"`、`table_view="html"`、`include_table_structure=true`、`resource_mode="free_only"`。
-   付费的 `resource_mode="paid"` 能直接导出 docx，但免费额度不含导出；免费 markdown 足够本地重建。
-2. **本地渲染**：`scripts/md_to_docx.py`，批量入口 `scripts/build_docs.py`
-   - HTML 表格 → 真 Word 表格，支持 `colspan`/`rowspan` 合并；markdown 管道表格（`| a | b |` 加 `|---|---|` 分隔行）也会自动转成真表格
-   - 单元格内容按 `<br>` 与 `<img>` 的文档顺序切段，文字与插图交替输出；**连续多图放进同一段并排**（选项图 A/B/C/D 不会叠成竖排）
-   - 插图按宽高双限缩放（单图 9cm 宽、并行图按张数均分、高度上限 4.6cm）
-   - 丢弃 LaTeX 碎片行、纯符号行，以及页眉残留的「基础教育精品课」
+**先记住一件事**：平台给的 PDF 是由逐页图片合成的，**没有文字层**（`pymupdf` 取 `get_text()` 返回 0 字符）。所以"直接转 docx"的工具只会得到整页图，必须走「解析成 markdown → 渲染成 docx」两步。
+
+解析环节按环境选一档，质量从高到低：
+
+- **A｜本机装了 xParse 插件（豆包 App 首选）**：用 xParse 插件（`prepare_file_upload` 上传 PDF → `submit_parse_task` → 逐份 `parse_document`），参数取
+  `result_format="markdown"`、`table_view="html"`、`include_table_structure=true`、`resource_mode="free_only"`。
+  付费的 `resource_mode="paid"` 能直接导出 docx，但免费额度不含导出；免费 markdown 足够本地重建。
+- **B｜没有插件时走 HTTP 接口（WorkBuddy 等任何宿主都可用，不需要 MCP）**：`scripts/pdf_to_md.py --engine textin`，需先设
+  `TEXTIN_APP_ID` / `TEXTIN_SECRET_CODE`（https://www.textin.com → 工作台 → 账号设置 → 开发者信息，有免费额度）。
+  接口是 `POST https://api.textin.com/api/v1/xparse/parse/sync`，脚本已封装 multipart 上传、config 与错误码提示（凭证错误直接给注册指引）。
+- **C｜完全离线兜底（无账号、不联网）**：`python scripts/setup.py -y --local-ocr` 装依赖，再 `scripts/pdf_to_md.py --engine local`（RapidOCR + RapidLayout 本地解析）。
+  **质量有限**：版面模型会漏检部分插图（实测一页 7 张图出 4~5 张）、表格列数可能错、公式与上下标失真。只能应急用，交付时必须明确说明"需对照源 PDF 复核"。
+
+**渲染成 docx（三档共用）**：`scripts/md_to_docx.py` 单份，`scripts/build_docs.py` 批量。
+
+- HTML 表格 → 真 Word 表格，支持 `colspan`/`rowspan` 合并；markdown 管道表格（`| a | b |` 加 `|---|---|` 分隔行）也会自动转成真表格
+- 单元格内容按 `<br>` 与 `<img>` 的文档顺序切段，文字与插图交替输出；**连续多图放进同一段并排**（选项图 A/B/C/D 不会叠成竖排）
+- 插图按宽高双限缩放（单图 9cm 宽、并行图按张数均分、高度上限 4.6cm）；图片来源支持 **http(s) URL 与本地绝对路径**（`pdf_to_md.py` 裁出的插图就是本地文件）
+- 丢弃 LaTeX 碎片行、纯符号行，以及页眉残留的「基础教育精品课」
 
 ```bash
+# 解析：A 用插件取 markdown；B/C 用脚本出 markdown
+python "<skill>/scripts/pdf_to_md.py" --engine textin --in "第一节 透镜" --out-dir md
+# 渲染单份 / 批量
+python "<skill>/scripts/build_docs.py" --md "md/作业练习-第1节  透镜.md" --out "<目录>" --name "作业练习-第1节 透镜.docx"
 python "<skill>/scripts/build_docs.py"   # 读 fileids.json + md/*.md 批量出 docx，末尾打印「完成 N / 总数」
 ```
 
-3. **必须人工校正的三处**（不校正会被退回）：
-   - **表格单元格内的多张插图**：xParse json 里格内图只有 `image_datas` 列表（顺序即阅读顺序）、**没有坐标**，markdown 会把整批图堆到单元格末尾。必须按题号插回每题之后——先渲染源 PDF 页看图（`pymupdf`，115dpi），再改 md 里 `<img>` 的位置。表格**外**的图是独立 `Image` 元素，自带 `coordinates`，解析顺序已正确，不用动。
-   - **OCR 错字与公式**：`$...\overset{...}$` 碎片被丢弃后个别选项文字会缺，按源图补齐（如 `CC′`、`甲/乙`、`凸透镜/凹透镜`）。
-   - **未识别成表格的整页表格**：按页图手工重建成 4~6 列真表格（近视/远视对比表、实验记录表等）。
-4. **验收自检**：docx→PDF 出图看页（`win32com` + `pymupdf`），核对①题目是普通可编辑段落而非图片②每张插图紧跟所属的题③课程基本信息表/教学过程表是真表格且合并单元格正确。
+**必须人工校正的三处**（不校正会被退回）：
+
+- **表格单元格内的多张插图**：xParse json 里格内图只有 `image_datas` 列表（顺序即阅读顺序）、**没有坐标**，markdown 会把整批图堆到单元格末尾。必须按题号插回每题之后——先渲染源 PDF 页看图（`pymupdf`，115dpi），再改 md 里 `<img>` 的位置。表格**外**的图是独立 `Image` 元素，自带 `coordinates`，解析顺序已正确，不用动。
+- **OCR 错字与公式**：`$...\overset{...}$` 碎片被丢弃后个别选项文字会缺，按源图补齐（如 `CC′`、`甲/乙`、`凸透镜/凹透镜`）。
+- **未识别成表格的整页表格**：按页图手工重建成 4~6 列真表格（近视/远视对比表、实验记录表等）。
+
+**验收自检**：docx→PDF 出图看页（`win32com` + `pymupdf`），核对①题目是普通可编辑段落而非图片②每张插图紧跟所属的题③课程基本信息表/教学过程表是真表格且合并单元格正确。
 
 依赖：`python-docx`、`Pillow`、`pymupdf`、`pywin32`（docx→PDF 自检）。
 
-> 旧方案已废弃，不要再用：`pdf_to_docx.py` 纯 OCR 文字（丢图）、`embed_page_images.py` 每页插整页原图（用户明确否决）。本地 `cv2` 表格线检测与 `rapid-table`(SLANet-plus) 的效果都明显不如云端 xParse。
+> 旧方案已废弃，不要再用：`pdf_to_docx.py` 纯 OCR 文字（丢图）、`embed_page_images.py` 每页插整页原图（用户明确否决）。本地 `cv2` 表格线检测与 `rapid-table`(SLANet-plus) 的效果都明显不如云端 xParse；本地 OCR 只作离线应急。
 
 ## 四、需要登录时：直接开浏览器交接
 
