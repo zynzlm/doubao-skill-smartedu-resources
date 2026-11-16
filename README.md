@@ -1,122 +1,109 @@
-# doubao-skill-smartedu-resources
+# smartedu-resources
 
-一个可直接安装使用的 **Agent Skill**：把国家中小学智慧教育平台（[basic.smartedu.cn](https://basic.smartedu.cn)，即“智慧中小学”）的公开资源检索并下载到本地。
+一个自建的 Skill：检索并下载**国家中小学智慧教育平台**（basic.smartedu.cn / 智慧中小学）的资源——电子教材 PDF、课时课件、教学设计、学习任务单、作业练习，以及把它们批量转成 PPTX 和可编辑 Word。
 
-平台所有资料都是免费的，但站点没有“下载”按钮：课件/教学设计/学习任务单/作业练习只有逐页转码图，视频只有在线流。本技能把能公开取到的全部拉下来，并额外提供「课件→PPTX」和「文档→可编辑 Word（保留原题插图与真表格）」两条后处理链路。
+资源全部免费；仓库里**只有代码与说明**，不含任何从平台下载的文件。
 
 ## 能做什么
 
-| 能力 | 入口脚本 | 说明 |
+| 能力 | 脚本 | 产物 |
 |---|---|---|
-| 依赖自动安装 | `scripts/setup.py` | 检测缺什么包就装什么，可走国内镜像，装完自检 6 个脚本 |
-| 电子教材检索与下载 | `scripts/smartedu.py` | 约 3500 本教材，按学段/学科/版本/年级/册次筛选，下载完整 PDF |
-| 单份课时资源 | `scripts/fetch_resource.py` | 粘一个详情页链接或 resourceId，逐页取图合成 PDF |
-| 整章 / 整节批量 | `scripts/batch_download.py` | 给定教材 id + 章名，一次拉完整章按节分目录，并写 `清单.md` |
-| 课件 → PPTX | `scripts/to_pptx.py` | 每页原图铺满一页 16:9 幻灯片，视觉与原件一致 |
-| 文档 → 可编辑 Word | `scripts/md_to_docx.py` + `scripts/build_docs.py` | 配合版面解析（xParse 一类）结果，重建真表格 + 原位插图的可编辑 docx |
+| 教材检索、下载原版 PDF | `scripts/smartedu.py` | `.pdf` |
+| 单份课时资源抓取 | `scripts/fetch_resource.py` | `.pdf` + 页面图 |
+| 整章 / 整节批量下载 | `scripts/batch_download.py` | 按节分目录 + `清单.md` |
+| 课件转 PPT | `scripts/to_pptx.py` | `.pptx`（每页铺满原图，视觉同原件） |
+| **PDF 解析成 markdown** | `scripts/pdf_to_md.py` | `.md` + 裁切插图（云端接口或本地 OCR） |
+| **markdown 转可编辑 Word** | `scripts/md_to_docx.py` / `scripts/build_docs.py` | `.docx`（真表格 + 插图原位） |
+| 依赖一键安装与自检 | `scripts/setup.py` | 环境就绪 / 未就绪 |
 
-## 仓库结构
+实测过整套流程：人教版八年级上册物理第五章（5 节）——54 份 PDF/602 页、20 个视频（只在线）、22 份课件转 PPTX，32 份教学设计/任务单/作业转成可编辑 Word（3.31MB）。
 
-```
-doubao-skill-smartedu-resources/
-├── README.md
-├── smartedu-resources/          ← 技能本体（整目录）
-│   ├── SKILL.md                 ← 入口与完整流程说明
-│   ├── references/api.md        ← 实测过的接口、主机行为、失效端点
-│   └── scripts/                 ← 7 个可运行脚本（见上表）
-└── workbuddy/                   ← WorkBuddy / CodeBuddy 适配版
-    ├── SKILL.md                 ← 覆盖用（多 allowed-tools、登录章节不依赖特定工具）
-    └── 安装说明.md               ← 3 步安装
-```
-
-## 安装（豆包 / 通用 SKILL.md 宿主）
-
-1. `git clone https://github.com/zynzlm/doubao-skill-smartedu-resources.git`
-2. 把仓库里的 `smartedu-resources/` 整个目录复制到你客户端的**用户技能目录**（user skills，各客户端位置不同，见对应客户端帮助；目录内必须直接是 `SKILL.md`）。若客户端要求目录名与技能名一致，保持目录名为 `smartedu-resources`。
-3. 重启会话或重新加载技能，然后直接说“下人教版八年级上册物理第五章的全部资料”这类需求即可触发。
-4. 第一次使用先跑依赖自检（见下节），不要手敲 pip。
-
-> 不装到客户端也可以当普通脚本用：直接 `python smartedu-resources/scripts/smartedu.py --help`。
-
-## 依赖：一条命令装好
-
-Python 3.8+（推荐 3.10+）。**不要手动 pip install，跑 setup.py**：
+## 快速开始
 
 ```bash
-python smartedu-resources/scripts/setup.py                  # 缺什么装什么（带确认）
-python smartedu-resources/scripts/setup.py --check          # 只看状态，不动环境
-python smartedu-resources/scripts/setup.py -y --mirror tsinghua --self-test   # 国内源静默装 + 自检
-```
+# 1) 装依赖（首次必跑）
+python scripts/setup.py -y --mirror tsinghua
+python scripts/setup.py --check --self-test
 
-| 依赖 | 用途 | 必需 |
-|---|---|---|
-| `pillow` | 页面图合成 PDF | 是 |
-| `pymupdf` | 课件 PDF → PPTX、页图渲染 | 是 |
-| `python-pptx` | 写 PPTX | 是 |
-| `python-docx` | 写 docx | 是 |
-| `requests` | HTTP 客户端（脚本本体用标准库 urllib） | 否，`--optional` 才装 |
-
-setup.py 自身不含第三方依赖，只用标准库判断 import 并调 `python -m pip`；默认走官方源，失败自动换清华源。退出码 0 = 依赖齐全，1 = 仍有核心依赖缺失。
-
-## WorkBuddy / CodeBuddy 安装
-
-WorkBuddy 使用同一套 `SKILL.md` 规范，但需要多一行权限。
-
-```bash
-# 1) 放进技能目录（项目级，或换成 ~/.codebuddy/skills 做全局）
-mkdir -p .codebuddy/skills
-cp -r doubao-skill-smartedu-resources/smartedu-resources .codebuddy/skills/smartedu-resources
-
-# 2) 用适配版覆盖主文件（关键一步）
-cp doubao-skill-smartedu-resources/workbuddy/SKILL.md .codebuddy/skills/smartedu-resources/SKILL.md
-```
-
-然后重开会话或 `/reload-plugins`，用 `/smartedu-resources` 手动触发，也会根据 description 自动匹配。适配版只改两处：frontmatter 多了 `allowed-tools: Read, Write, Bash, Glob`；登录章节去掉豆包专用工具名，改为“打开登录页 → 告诉用户要做什么 → 停下等”。详见 [`workbuddy/安装说明.md`](workbuddy/安装说明.md)。
-
-## 快速上手
-
-```bash
-# 0) 先装依赖
-python scripts/setup.py -y
-
-# 1) 看有哪些教材版本
-python scripts/smartedu.py facets --module textbook
-
-# 2) 检索并下载一本教材
-python scripts/smartedu.py download --module textbook --subject 物理 --grade 八年级 --version 人教版 --volume 上册 --out "<目录>"
-
-# 3) 下整章全部资料（章 id 来自备课页 URL 的 teachingmaterialId）
+# 2) 下载整章
 python scripts/batch_download.py --teachingmaterial 5370d999-5dd2-4c64-a9ed-089ec2694300 --chapter 第五章 --out "<输出目录>"
 
-# 4) 课件 PDF 转 PPTX
-python scripts/to_pptx.py --in "课件-第1节 透镜.pdf" --out "<输出目录>"
+# 3) 课件转 PPT
+python scripts/to_pptx.py --in "<某课的课件.pdf>" --out "<输出目录>"
+
+# 4) 文档转可编辑 Word（两步：先出 md，再出 docx）
+python scripts/pdf_to_md.py --engine textin --in "第一节 透镜" --out-dir md      # 需 TEXTIN_APP_ID / TEXTIN_SECRET_CODE
+python scripts/build_docs.py --md "md/作业练习-第1节  透镜.md" --out "<输出目录>" --name "作业练习-第1节 透镜.docx"
 ```
 
-输出结构：`<输出目录>/第一节 透镜/课件-xxx.pdf`、`教学设计-xxx.pdf` …，并在根目录生成 `清单.md`（每份的页数与来源）。
+## 文档转成可编辑 Word（重点）
 
-## 文档转可编辑 Word
+平台给的 PDF 是由逐页图片合成的，**没有文字层**（`pymupdf.get_text()` 返回 0 字符），所以“直接转 docx”的工具只能得到整页扫描图。合格产物必须走两步：**解析成 markdown（还原文字、表格、插图位置）→ 渲染成 docx**。
 
-平台不提供教学设计/学习任务单/作业练习的原 docx。需要**可编辑文字 + 插图留在原题位置 + 真表格（含合并单元格）**时，走这条链路：
+验收口径：①题目文字是可编辑段落，不是图片；②每张插图留在它所属的题目位置；③该保留的表格是真 Word 表格且合并单元格正确。
 
-1. 用支持版面还原的文档解析服务（如 TextIn xParse）解析源 PDF（`result_format=markdown`、`table_view=html`、`include_table_structure=true`），得到每份一个 md；
-2. `python scripts/build_docs.py --work <work> --out <目录>` 批量渲染；`<work>/md/cXX.md` + `<work>/fileids.json`（`{"ok":{"c01":{"path":"<源PDF绝对路径>"}}}`）。
+解析按环境选一档，质量从高到低：
 
-渲染器做的事：HTML 表格与 markdown 管道表格都转成真 Word 表格（支持 `colspan`/`rowspan`）；单元格内文字与 `<img>` 按文档顺序切段交替输出，连续多图同段并排；图片宽高双限缩放；剔除页眉残留与 LaTeX 碎片。
+- **A｜TextIn xParse HTTP 接口（推荐，任何宿主可用）**：`pdf_to_md.py --engine textin`。接口 `POST https://api.textin.com/api/v1/xparse/parse/sync`，请求头 `x-ti-app-id`/`x-ti-secret-code`，multipart 上传文件 + config（`table_view=html`、`include_table_structure=true`、`include_image_data=true`）。key 在 `https://www.textin.com` → 工作台 → 账号设置 → 开发者信息，有免费额度（每日 1000 页量级）。质量与豆包版一致。
+- **B｜宿主自带版面解析 MCP**：装了就最省事，直接用插件产出 markdown 存到 `<work>/md/`，再跑 `build_docs.py`。
+- **C｜本地 OCR 兜底（不联网、不要账号）**：`setup.py -y --local-ocr` 后 `pdf_to_md.py --engine local`。RapidOCR 出文字、RapidLayout 找图/表区域、自实现行聚类与裁切插回。**质量有限**：实测一页 7 张图能出 4~5 张、表格列数可能错、公式失真。只能应急，交付时需说明“对照源 PDF 复核”。
 
-**必须人工校正的两处：**
+渲染器（`md_to_docx.py`）的能力：HTML 表格 → 真 Word 表格（含 `colspan`/`rowspan`）；markdown 管道表格自动转真表格；单元格内容按 `<br>`/`<img>` 文档顺序切段，文字与插图交替；插图支持 http(s) URL 与本地绝对路径，宽高双限缩放；连续多图并排；丢弃 LaTeX 碎片与页眉残留。
 
-- 表格单元格内的多张插图在解析结果里**只有顺序、没有坐标**，需要对照源 PDF 页图把 `<img>` 插回每道题之后；
-- OCR 错字/公式碎片需按原图补齐。
+## WorkBuddy 上用
 
-## 合规与边界
+豆包 App 里可直接用 xParse 插件；WorkBuddy 没有这个插件，所以原版只写插件名的写法会“能下载、出不 docx”。已修正：`workbuddy/SKILL.md` 把转 Word 拆成上面 A/B/C 三档，插件不再是必需。
 
-- 平台声明资源免费，但**“任何单位及个人不得用于商业行为”**。本仓库只放代码与说明，**不包含任何下载的资源文件**。
-- 请只按需取用户明确需要的少数几份，不做整库搬运。
-- 视频是 m3u8 在线流，地址带签名，**不支持下载**；需要留存请由用户登录后在线观看或自行录屏。
-- 登录：教材 PDF 与课时页面图都是公开接口。遇到需要登录的场景（视频、“我的资源库”），把登录页交给用户自己完成，不要索取密码。
+```bash
+# 装到 WorkBuddy 后，首次先跑依赖
+python scripts/setup.py -y --mirror tsinghua
+# 再设云端解析凭证（Windows PowerShell）
+$env:TEXTIN_APP_ID="xxx"; $env:TEXTIN_SECRET_CODE="yyy"
+# 然后一条命令出 md + 一条命令出 docx
+python scripts/pdf_to_md.py --engine textin --in "第一节 透镜" --out-dir md
+python scripts/build_docs.py --work <md 所在工作目录> --out "<输出目录>"
+```
 
-接口细节与已验证不可用的端点见 [`smartedu-resources/references/api.md`](smartedu-resources/references/api.md)。
+详细安装步骤、常见问题与两个版本的差异，见 `workbuddy/安装说明.md`。
+
+## 目录结构
+
+```text
+├─ README.md
+├─ smartedu-resources/            # 主技能（豆包 App 直接可用）
+│  ├─ SKILL.md
+│  ├─ references/api.md           # 接口实测记录
+│  └─ scripts/
+│     ├─ setup.py
+│     ├─ smartedu.py
+│     ├─ fetch_resource.py
+│     ├─ batch_download.py
+│     ├─ to_pptx.py
+│     ├─ pdf_to_md.py
+│     ├─ md_to_docx.py
+│     └─ build_docs.py
+└─ workbuddy/                     # WorkBuddy 适配
+   ├─ SKILL.md                    # 带 allowed-tools，不依赖插件
+   └─ 安装说明.md
+```
+
+## 依赖
+
+- 必需：`pillow`、`pymupdf`、`python-pptx`、`python-docx`、`requests`；Python 3.8+。
+- 可选 `--local-ocr` 组：`rapidocr`、`rapid-layout`、`opencv-python-headless`、`numpy`。
+- docx 交付前自检另需 `pywin32`（docx→PDF 出图核对，只在 Windows 需要）。
+
+`setup.py` 会检测并安装，镜像默认官方、失败自动换清华源。
+
+## 接口与边界
+
+- 目录：`https://s-file-1.ykt.cbern.com.cn/zxx/ndrs/...`；章节树 `https://s-file-2.ykt.cbern.com.cn/zxx/ndrs/prepare_lesson/trees/{teachingmaterialId}.json`；页面图主机 `r1/r2/r3-ndr.ykt.cbern.com.cn`。
+- 教材 PDF：`https://cdncs.ykt.cbern.com.cn/v0.1/static/edu_product/esp/assets/{id}.pkg/pdf.pdf`，公开可下。
+- 不可用：`r*-ndr-private` 上的 `transcode/pdf.pdf`（401）与 `m3u8`（401/403）需签名；视频只能登录后在线观看。
+- 平台要求：资源免费，但“任何单位及个人不得用于商业行为”。仓库只含代码，不含资源文件；请勿把下载的教材/课件再分发。
+
+接口细节见 `smartedu-resources/references/api.md`。
 
 ## License
 
-仅供学习与教学备课使用。平台资源版权归国家中小学智慧教育平台及原始提供方所有。
+仅供学习与教学使用。平台资源版权归原作者/出版方所有。
